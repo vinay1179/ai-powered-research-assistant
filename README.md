@@ -8,12 +8,17 @@ Set up the full local infrastructure stack (API, Postgres, OpenSearch, Airflow, 
 ### Status
 - Core scaffolding added:
   - Config, DB interfaces, Postgres adapter, DB factory, and dependencies
-  - Paper model and repository
-  - Health/ping router
-  - Week 1 notebook README
+  - Paper model, schemas, and repository
+  - Health/ping + ask + papers routers
+  - Ollama client service
+  - Exceptions and middleware utilities
+- Infra + tooling added:
+  - Dockerfile, Compose stack, Airflow Dockerfile/entrypoint
+  - Airflow DAG + init SQL + requirements
+  - Week 1 notebook + README
+  - Makefile, .env.example, .gitignore
 - Git initialized and pushed to `origin/main`
 
 ### Next Steps
-- Continue porting remaining base files in sequence
-- Add schemas, routers, and services
-- Add `.env` and configure local DB credentials
+- Add `.env` with custom DB credentials
+- Run `docker compose up -d` and verify health checks
