@@ -15,5 +15,5 @@ Set up the full local infrastructure stack (API, Postgres, OpenSearch, Airflow, 
 
 ### Next Steps
 - Continue porting remaining base files in sequence
-- Add schemas, routers, and services not yet copied
+- Add schemas, routers, and services
 - Add `.env` and configure local DB credentials
