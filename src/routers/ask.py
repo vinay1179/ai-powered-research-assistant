@@ -11,18 +11,18 @@ async def ask_question(request: AskRequest) -> AskResponse:
 
     Week 1: Returns hardcoded mock data for testing.
     """
-    # Mock response for week 1
+    # Mock response only
     mock_sources = [
         PaperSource(
             arxiv_id="2401.00001",
-            title="Mock Paper: Introduction to AI Research",
-            authors=["John Doe", "Jane Smith"],
+            title="Mock Paper1: Introduction to AI Research",
+            authors=["Jack", "Will"],
             abstract_preview="This is a mock abstract for testing purposes in week 1...",
         ),
         PaperSource(
             arxiv_id="2401.00002",
-            title="Mock Paper: Advanced Machine Learning Techniques",
-            authors=["Alice Johnson", "Bob Wilson"],
+            title="Mock Paper2: Advanced Machine Learning Techniques",
+            authors=["Dustin", "Steve"],
             abstract_preview="Another mock abstract demonstrating the API structure...",
         ),
     ]
