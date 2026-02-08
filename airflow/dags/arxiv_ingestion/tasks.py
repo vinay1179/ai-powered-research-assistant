@@ -10,10 +10,6 @@ sys.path.insert(0, "/opt/airflow")
 
 # All imports at the top
 from sqlalchemy import text
-from src.db.factory import make_database
-from src.services.arxiv.factory import make_arxiv_client
-from src.services.metadata_fetcher import make_metadata_fetcher
-from src.services.pdf_parser.factory import make_pdf_parser_service
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +23,12 @@ def get_cached_services() -> Tuple[Any, Any, Any, Any]:
         Tuple of (arxiv_client, pdf_parser, database, metadata_fetcher)
     """
     logger.info("Initializing services (cached with lru_cache)")
+
+    # Import heavy dependencies lazily to avoid DAG import timeouts
+    from src.db.factory import make_database
+    from src.services.arxiv.factory import make_arxiv_client
+    from src.services.metadata_fetcher import make_metadata_fetcher
+    from src.services.pdf_parser.factory import make_pdf_parser_service
 
     # Initialize core services
     arxiv_client = make_arxiv_client()
@@ -117,7 +119,7 @@ def fetch_daily_papers(**context):
         results = asyncio.run(
             run_paper_ingestion_pipeline(
                 target_date=target_date,
-                max_results=10,
+                max_results=30,
                 process_pdfs=True,
             )
         )
