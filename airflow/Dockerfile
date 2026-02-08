@@ -12,6 +12,7 @@ RUN apt-get update && \
         build-essential \
         curl \
         git \
+        libgl1 \
         libpq-dev \
         poppler-utils \
         tesseract-ocr \
