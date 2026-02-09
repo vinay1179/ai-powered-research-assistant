@@ -62,6 +62,7 @@ class Settings(DefaultSettings):
     ollama_models: List[str] = Field(default=["llama3.2:1b"])
     ollama_default_model: str = "llama3.2:1b"
     ollama_timeout: int = 300  # 5 minutes for LLM operations
+    ollama_context_max_chars: int = 12000
 
     # arXiv settings
     arxiv: ArxivSettings = Field(default_factory=ArxivSettings)

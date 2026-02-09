@@ -30,6 +30,13 @@ class Paper(Base):
     pdf_processed = Column(Boolean, default=False, nullable=False)
     pdf_processing_date = Column(DateTime, nullable=True)
 
+    # LLM-derived context (optional)
+    llm_summary = Column(Text, nullable=True)
+    llm_key_points = Column(JSON, nullable=True)
+    llm_context = Column(Text, nullable=True)
+    llm_model = Column(String, nullable=True)
+    llm_generated_at = Column(DateTime, nullable=True)
+
     # Timestamps
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

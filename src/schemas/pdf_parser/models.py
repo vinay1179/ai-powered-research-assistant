@@ -1,3 +1,4 @@
+from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -62,3 +63,8 @@ class ParsedPaper(BaseModel):
 
     arxiv_metadata: ArxivMetadata = Field(..., description="Metadata from arXiv API")
     pdf_content: Optional[PdfContent] = Field(None, description="Content extracted from PDF")
+    llm_summary: Optional[str] = Field(None, description="LLM summary of the paper")
+    llm_key_points: Optional[List[str]] = Field(None, description="Key points extracted by LLM")
+    llm_context: Optional[str] = Field(None, description="LLM-generated context for QA")
+    llm_model: Optional[str] = Field(None, description="Model used for LLM context")
+    llm_generated_at: Optional[datetime] = Field(None, description="When LLM context was generated")
