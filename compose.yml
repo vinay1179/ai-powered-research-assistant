@@ -21,8 +21,12 @@ services:
     environment:
       # Container-specific overrides (for inter-service communication)
       - OPENSEARCH_HOST=http://opensearch:9200
+      - OPENSEARCH__HOST=http://opensearch:9200
       - OLLAMA_HOST=http://ollama:11434
       - POSTGRES_DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER:-rag_user}:${POSTGRES_PASSWORD_URLENCODED:-${POSTGRES_PASSWORD:-rag_password}}@postgres:5432/${POSTGRES_DB:-rag_db}
+    volumes:
+      - /Users/vinayperavali/Desktop/Research_Papers_Testing:/data/local_pdfs:ro
+      - ./.env:/app/.env:ro
     networks:
       - rag-network
 
@@ -92,6 +96,7 @@ services:
       # Container hostnames for Airflow
       - POSTGRES_DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER:-rag_user}:${POSTGRES_PASSWORD_URLENCODED:-${POSTGRES_PASSWORD:-rag_password}}@postgres:5432/${POSTGRES_DB:-rag_db}
       - OPENSEARCH_HOST=http://opensearch:9200
+      - OPENSEARCH__HOST=http://opensearch:9200
       - OLLAMA_HOST=http://ollama:11434
       - AIRFLOW_DB_HOST=postgres
       - AIRFLOW_DB_PORT=5432
