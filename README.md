@@ -20,6 +20,7 @@ end-to-end pipeline (API, Airflow, DB, OpenSearch, Ollama).
   - `.env` setup with custom Postgres + Airflow admin credentials
   - URL-encoded DB passwords for container-safe connection strings
   - Ollama models configured via JSON env
+- LLM context building runs after PDF parsing and stores `llm_summary`, `llm_key_points`, and `llm_context` in Postgres
 
 ### Airflow Pipeline Diagram
 ![Airflow ingestion flow](static/week2_data_ingestion_flow.png)
@@ -35,3 +36,12 @@ end-to-end pipeline (API, Airflow, DB, OpenSearch, Ollama).
 - Run Week 2 notebook (`notebooks/week2/week2_arxiv_integration.ipynb`)
 - Execute API and DB smoke tests for stored papers
 - Optional: enable OpenSearch indexing (Week 3+)
+
+### Future Improvements (Context Building)
+- Enforce strict JSON responses from Ollama to avoid markdown fallbacks
+- Add a smaller, dedicated LLM input cap (separate from PDF max chars)
+- Implement chunking + map-reduce summarization for long PDFs
+- Add retries/backoff + partial results when LLM times out
+- Cache LLM outputs to avoid recompute during re-ingestion
+- Allow per-model timeout and context limits via env settings
+- Add a lightweight/faster model option for quick summaries

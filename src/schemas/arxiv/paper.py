@@ -42,6 +42,13 @@ class PaperCreate(PaperBase):
     pdf_processed: Optional[bool] = Field(False, description="Whether PDF was successfully processed")
     pdf_processing_date: Optional[datetime] = Field(None, description="When PDF was processed")
 
+    # LLM-derived context (optional)
+    llm_summary: Optional[str] = Field(None, description="LLM summary of the paper")
+    llm_key_points: Optional[List[str]] = Field(None, description="Key points extracted by LLM")
+    llm_context: Optional[str] = Field(None, description="LLM-generated context for QA")
+    llm_model: Optional[str] = Field(None, description="Model used for LLM context")
+    llm_generated_at: Optional[datetime] = Field(None, description="When LLM context was generated")
+
 
 class PaperResponse(PaperBase):
     """Schema for paper API responses with all content."""
@@ -58,6 +65,13 @@ class PaperResponse(PaperBase):
     parser_metadata: Optional[Dict[str, Any]] = Field(None, description="Additional parser metadata")
     pdf_processed: bool = Field(False, description="Whether PDF was successfully processed")
     pdf_processing_date: Optional[datetime] = Field(None, description="When PDF was processed")
+
+    # LLM-derived context (optional fields)
+    llm_summary: Optional[str] = Field(None, description="LLM summary of the paper")
+    llm_key_points: Optional[List[str]] = Field(None, description="Key points extracted by LLM")
+    llm_context: Optional[str] = Field(None, description="LLM-generated context for QA")
+    llm_model: Optional[str] = Field(None, description="Model used for LLM context")
+    llm_generated_at: Optional[datetime] = Field(None, description="When LLM context was generated")
 
     # Timestamps
     created_at: datetime

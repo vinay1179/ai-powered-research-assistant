@@ -10,7 +10,9 @@ from src.exceptions import MetadataFetchingException, PipelineException
 from src.repositories.paper import PaperRepository
 from src.schemas.arxiv.paper import ArxivPaper, PaperCreate
 from src.schemas.pdf_parser.models import ArxivMetadata, ParsedPaper, PdfContent
+from src.config import Settings
 from src.services.arxiv.client import ArxivClient
+from src.services.ollama.client import OllamaClient
 from src.services.pdf_parser.parser import PDFParserService
 
 logger = logging.getLogger(__name__)
@@ -34,6 +36,9 @@ class MetadataFetcher:
         pdf_cache_dir: Optional[Path] = None,
         max_concurrent_downloads: int = 5,
         max_concurrent_parsing: int = 3,
+        ollama_client: Optional[OllamaClient] = None,
+        ollama_model: Optional[str] = None,
+        ollama_context_max_chars: Optional[int] = None,
     ):
         """
         Initialize metadata fetcher.
@@ -50,6 +55,10 @@ class MetadataFetcher:
         self.pdf_cache_dir = pdf_cache_dir or self.arxiv_client.pdf_cache_dir
         self.max_concurrent_downloads = max_concurrent_downloads
         self.max_concurrent_parsing = max_concurrent_parsing
+        settings = Settings()
+        self.ollama_client = ollama_client or OllamaClient(settings)
+        self.ollama_model = ollama_model or settings.ollama_default_model
+        self.ollama_context_max_chars = ollama_context_max_chars or settings.ollama_context_max_chars
 
     async def fetch_and_process_papers(
         self,
@@ -57,6 +66,7 @@ class MetadataFetcher:
         from_date: Optional[str] = None,
         to_date: Optional[str] = None,
         process_pdfs: bool = True,
+        build_ollama_context: bool = True,
         store_to_db: bool = True,
         db_session: Optional[Session] = None,
     ) -> Dict[str, Any]:
@@ -101,7 +111,7 @@ class MetadataFetcher:
             # Step 2: Process PDFs if requested
             pdf_results = {}
             if process_pdfs:
-                pdf_results = await self._process_pdfs_batch(papers)
+                pdf_results = await self._process_pdfs_batch(papers, build_ollama_context=build_ollama_context)
                 results["pdfs_downloaded"] = pdf_results["downloaded"]
                 results["pdfs_parsed"] = pdf_results["parsed"]
                 results["errors"].extend(pdf_results["errors"])
@@ -138,7 +148,7 @@ class MetadataFetcher:
             results["errors"].append(f"Pipeline error: {str(e)}")
             raise PipelineException(f"Pipeline execution failed: {e}") from e
 
-    async def _process_pdfs_batch(self, papers: List[ArxivPaper]) -> Dict[str, Any]:
+    async def _process_pdfs_batch(self, papers: List[ArxivPaper], build_ollama_context: bool) -> Dict[str, Any]:
         """
         Process PDFs for a batch of papers with async concurrency.
 
@@ -173,7 +183,10 @@ class MetadataFetcher:
         parse_semaphore = asyncio.Semaphore(self.max_concurrent_parsing)
 
         # Start all download+parse pipelines concurrently
-        pipeline_tasks = [self._download_and_parse_pipeline(paper, download_semaphore, parse_semaphore) for paper in papers]
+        pipeline_tasks = [
+            self._download_and_parse_pipeline(paper, download_semaphore, parse_semaphore, build_ollama_context)
+            for paper in papers
+        ]
 
         # Wait for all pipelines to complete
         pipeline_results = await asyncio.gather(*pipeline_tasks, return_exceptions=True)
@@ -222,7 +235,11 @@ class MetadataFetcher:
         return results
 
     async def _download_and_parse_pipeline(
-        self, paper: ArxivPaper, download_semaphore: asyncio.Semaphore, parse_semaphore: asyncio.Semaphore
+        self,
+        paper: ArxivPaper,
+        download_semaphore: asyncio.Semaphore,
+        parse_semaphore: asyncio.Semaphore,
+        build_ollama_context: bool,
     ) -> tuple:
         """
         Complete download+parse pipeline for a single paper with true parallelism.
@@ -267,6 +284,18 @@ class MetadataFetcher:
 
                     # Combine into ParsedPaper
                     parsed_paper = ParsedPaper(arxiv_metadata=arxiv_metadata, pdf_content=pdf_content)
+
+                    if build_ollama_context:
+                        llm_payload = await self._build_llm_context(
+                            title=paper.title,
+                            abstract=paper.abstract,
+                            raw_text=pdf_content.raw_text,
+                        )
+                        parsed_paper.llm_summary = llm_payload.get("summary")
+                        parsed_paper.llm_key_points = llm_payload.get("key_points")
+                        parsed_paper.llm_context = llm_payload.get("context")
+                        parsed_paper.llm_model = llm_payload.get("model")
+                        parsed_paper.llm_generated_at = llm_payload.get("generated_at")
                     logger.debug(f"Parse complete: {paper.arxiv_id} - {len(pdf_content.raw_text)} chars extracted")
                 else:
                     # PDF parsing failed, but this is not critical - we can continue with metadata only
@@ -277,6 +306,46 @@ class MetadataFetcher:
             raise MetadataFetchingException(f"Pipeline error for {paper.arxiv_id}: {e}") from e
 
         return (download_success, parsed_paper)
+
+    async def _build_llm_context(self, title: str, abstract: str, raw_text: str) -> Dict[str, Any]:
+        prompt_text = (
+            "You are a research assistant. Summarize the paper, list key points, and provide a short context for Q&A.\n"
+            "Return ONLY valid JSON. Do not include markdown, headings, or any extra text.\n\n"
+            f"Title: {title}\n"
+            f"Abstract: {abstract}\n\n"
+            "Paper content (truncated):\n"
+            f"{raw_text[: self.ollama_context_max_chars]}\n\n"
+            'Required JSON shape: {"summary": "...", "key_points": ["..."], "context": "..."}'
+        )
+
+        try:
+            response = await self.ollama_client.generate(self.ollama_model, prompt_text, format="json")
+            raw_response = response.get("response") if isinstance(response, dict) else None
+            if not raw_response:
+                return {}
+
+            try:
+                import json
+
+                parsed = json.loads(raw_response)
+                return {
+                    "summary": parsed.get("summary"),
+                    "key_points": parsed.get("key_points"),
+                    "context": parsed.get("context"),
+                    "model": self.ollama_model,
+                    "generated_at": datetime.now(),
+                }
+            except Exception:
+                return {
+                    "summary": None,
+                    "key_points": None,
+                    "context": raw_response,
+                    "model": self.ollama_model,
+                    "generated_at": datetime.now(),
+                }
+        except Exception as exc:
+            logger.warning("Failed to build LLM context: %s", exc)
+            return {}
 
     def _serialize_parsed_content(self, parsed_paper: ParsedPaper) -> Dict[str, Any]:
         """
@@ -305,6 +374,11 @@ class MetadataFetcher:
                 "parser_metadata": pdf_content.metadata or {},
                 "pdf_processed": True,
                 "pdf_processing_date": datetime.now(),
+                "llm_summary": parsed_paper.llm_summary,
+                "llm_key_points": parsed_paper.llm_key_points,
+                "llm_context": parsed_paper.llm_context,
+                "llm_model": parsed_paper.llm_model,
+                "llm_generated_at": parsed_paper.llm_generated_at,
             }
         except Exception as e:
             logger.error(f"Failed to serialize parsed content: {e}")
@@ -413,4 +487,5 @@ def make_metadata_fetcher(
         pdf_cache_dir=pdf_cache_dir,
         max_concurrent_downloads=5,
         max_concurrent_parsing=1,
+        ollama_client=None,
     )
