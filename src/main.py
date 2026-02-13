@@ -6,8 +6,9 @@ import uvicorn
 from fastapi import FastAPI
 from src.config import get_settings
 from src.db.factory import make_database
-from src.routers import ask, papers, ping, search, testing
+from src.routers import ask, hybrid_search, papers, ping, search, testing
 from src.services.arxiv.factory import make_arxiv_client
+from src.services.embeddings.factory import make_embeddings_service
 from src.services.opensearch.factory import make_opensearch_client
 from src.services.pdf_parser.factory import make_pdf_parser_service
 
@@ -41,11 +42,22 @@ async def lifespan(app: FastAPI):
     if opensearch_client.health_check():
         logger.info("OpenSearch connected successfully")
 
-        # Ensure index exists
+        # Ensure paper index exists
         if opensearch_client.create_index(force=False):
             logger.info("OpenSearch index created")
         else:
             logger.info("OpenSearch index already exists")
+
+        # Ensure hybrid index + RRF pipeline exist
+        setup_results = opensearch_client.setup_indices(force=False)
+        if setup_results.get("hybrid_index"):
+            logger.info("Hybrid index created")
+        else:
+            logger.info("Hybrid index already exists")
+        if setup_results.get("rrf_pipeline"):
+            logger.info("RRF pipeline created")
+        else:
+            logger.info("RRF pipeline already exists")
 
         # Get index statistics
         stats = opensearch_client.get_index_stats()
@@ -56,7 +68,8 @@ async def lifespan(app: FastAPI):
     # Initialize services (kept for future endpoints and notebook demos)
     app.state.arxiv_client = make_arxiv_client()
     app.state.pdf_parser = make_pdf_parser_service()
-    logger.info("Services initialized: arXiv API client, PDF parser, OpenSearch")
+    app.state.embeddings_service = make_embeddings_service()
+    logger.info("Services initialized: arXiv API client, PDF parser, OpenSearch, Embeddings")
 
     logger.info("API ready")
     yield
@@ -78,6 +91,7 @@ app.include_router(ping.router, prefix="/api/v1")
 app.include_router(papers.router, prefix="/api/v1")
 app.include_router(ask.router, prefix="/api/v1")
 app.include_router(search.router, prefix="/api/v1")
+app.include_router(hybrid_search.router, prefix="/api/v1")
 app.include_router(testing.router, prefix="/api/v1")
 
 

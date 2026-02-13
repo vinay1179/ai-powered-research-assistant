@@ -67,6 +67,21 @@ class PDFParserSettings(BaseConfigSettings):
     do_table_structure: bool = True
 
 
+class ChunkingSettings(BaseConfigSettings):
+    model_config = SettingsConfigDict(
+        env_file=[".env", str(ENV_FILE_PATH)],
+        env_prefix="CHUNKING__",
+        extra="ignore",
+        frozen=True,
+        case_sensitive=False,
+    )
+
+    chunk_size: int = 600
+    overlap_size: int = 100
+    min_chunk_size: int = 100
+    section_based: bool = True
+
+
 class OpenSearchSettings(BaseConfigSettings):
     model_config = SettingsConfigDict(
         env_file=[".env", str(ENV_FILE_PATH)],
@@ -78,7 +93,12 @@ class OpenSearchSettings(BaseConfigSettings):
 
     host: str = "http://localhost:9200"
     index_name: str = "arxiv-papers"
+    chunk_index_suffix: str = "chunks"
     max_text_size: int = 1000000
+    vector_dimension: int = 1024
+    vector_space_type: str = "cosinesimil"
+    rrf_pipeline_name: str = "hybrid-rrf-pipeline"
+    hybrid_search_size_multiplier: int = 2
 
 
 class Settings(BaseConfigSettings):
@@ -105,9 +125,11 @@ class Settings(BaseConfigSettings):
     gemini_model: str = "gemini-1.5-flash"
     gemini_timeout: int = 60
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
+    jina_api_key: str = ""
 
     arxiv: ArxivSettings = Field(default_factory=ArxivSettings)
     pdf_parser: PDFParserSettings = Field(default_factory=PDFParserSettings)
+    chunking: ChunkingSettings = Field(default_factory=ChunkingSettings)
     opensearch: OpenSearchSettings = Field(default_factory=OpenSearchSettings)
 
     @field_validator("postgres_database_url")

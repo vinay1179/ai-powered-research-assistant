@@ -1,4 +1,4 @@
 from .health import HealthResponse, ServiceStatus
-from .search import SearchHit, SearchRequest, SearchResponse
+from .search import HybridSearchRequest, SearchHit, SearchRequest, SearchResponse
 
-__all__ = ["HealthResponse", "SearchHit", "SearchRequest", "SearchResponse", "ServiceStatus"]
+__all__ = ["HealthResponse", "HybridSearchRequest", "SearchHit", "SearchRequest", "SearchResponse", "ServiceStatus"]
