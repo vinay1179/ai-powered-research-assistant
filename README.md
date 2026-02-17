@@ -28,6 +28,10 @@
   - Provider selection per request (`ollama` or `gemini`)
   - RAG prompt builder + structured response parsing
   - Gradio UI for interactive RAG
+- **Week 6 Observability + Cache**
+  - Langfuse tracing integrated into the RAG pipeline
+  - Redis exact-match caching for `/ask` and `/stream`
+  - Langfuse + ClickHouse services added for monitoring
 - **Local PDF Testing**
   - Local-only ingestion endpoint for PDF testing
   - Local PDF directory mount for container parsing
