@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from sqlalchemy import text
 
-from ..dependencies import DatabaseDep, SettingsDep
+from ..dependencies import CacheDep, DatabaseDep, LangfuseDep, SettingsDep
 from ..exceptions import OllamaConnectionError, OllamaException, OllamaTimeoutError
 from ..schemas.api.health import HealthResponse, ServiceStatus
 from ..services.ollama import OllamaClient
@@ -23,7 +23,12 @@ async def ping():
     response_description="Service health information",
     tags=["Health"],
 )
-async def health_check(settings: SettingsDep, database: DatabaseDep) -> HealthResponse:
+async def health_check(
+    settings: SettingsDep,
+    database: DatabaseDep,
+    langfuse_tracer: LangfuseDep,
+    cache_client: CacheDep,
+) -> HealthResponse:
     """
     Comprehensive health check endpoint for monitoring and load balancer probes.
 
@@ -79,6 +84,23 @@ async def health_check(settings: SettingsDep, database: DatabaseDep) -> HealthRe
     except Exception as e:
         services["ollama"] = ServiceStatus(status="unhealthy", message=f"Unexpected Ollama error: {str(e)}")
         overall_status = "degraded"
+
+    # Redis cache connectivity
+    if cache_client is None:
+        services["redis"] = ServiceStatus(status="disabled", message="Cache client not configured")
+    else:
+        try:
+            cache_client.redis.ping()
+            services["redis"] = ServiceStatus(status="healthy", message="Connected successfully")
+        except Exception as e:
+            services["redis"] = ServiceStatus(status="unhealthy", message=f"Redis error: {str(e)}")
+            overall_status = "degraded"
+
+    # Langfuse tracing status
+    if getattr(langfuse_tracer, "client", None) is None:
+        services["langfuse"] = ServiceStatus(status="disabled", message="Tracing disabled or missing credentials")
+    else:
+        services["langfuse"] = ServiceStatus(status="healthy", message="Tracing enabled")
 
     return HealthResponse(
         status=overall_status,
