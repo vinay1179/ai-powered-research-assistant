@@ -6,13 +6,15 @@ from typing import Any, Dict, List, Optional
 
 from dateutil import parser as date_parser
 from sqlalchemy.orm import Session
+from src.config import Settings, get_settings
 from src.exceptions import MetadataFetchingException, PipelineException
 from src.repositories.paper import PaperRepository
 from src.schemas.arxiv.paper import ArxivPaper, PaperCreate
 from src.schemas.pdf_parser.models import ArxivMetadata, ParsedPaper, PdfContent
-from src.config import Settings
 from src.services.arxiv.client import ArxivClient
+from src.services.gemini.client import GeminiClient
 from src.services.ollama.client import OllamaClient
+from src.services.opensearch.client import OpenSearchClient
 from src.services.pdf_parser.parser import PDFParserService
 
 logger = logging.getLogger(__name__)
@@ -33,12 +35,14 @@ class MetadataFetcher:
         self,
         arxiv_client: ArxivClient,
         pdf_parser: PDFParserService,
+        opensearch_client: Optional[OpenSearchClient] = None,
         pdf_cache_dir: Optional[Path] = None,
         max_concurrent_downloads: int = 5,
         max_concurrent_parsing: int = 3,
         ollama_client: Optional[OllamaClient] = None,
         ollama_model: Optional[str] = None,
         ollama_context_max_chars: Optional[int] = None,
+        settings: Optional[Settings] = None,
     ):
         """
         Initialize metadata fetcher.
@@ -52,13 +56,16 @@ class MetadataFetcher:
         """
         self.arxiv_client = arxiv_client
         self.pdf_parser = pdf_parser
+        self.opensearch_client = opensearch_client
         self.pdf_cache_dir = pdf_cache_dir or self.arxiv_client.pdf_cache_dir
         self.max_concurrent_downloads = max_concurrent_downloads
         self.max_concurrent_parsing = max_concurrent_parsing
-        settings = Settings()
-        self.ollama_client = ollama_client or OllamaClient(settings)
-        self.ollama_model = ollama_model or settings.ollama_default_model
-        self.ollama_context_max_chars = ollama_context_max_chars or settings.ollama_context_max_chars
+        self.settings = settings or get_settings()
+        self.ollama_client = ollama_client or OllamaClient(self.settings)
+        self.gemini_client = GeminiClient(self.settings)
+        self.ollama_model = ollama_model or self.settings.ollama_default_model
+        self.ollama_context_max_chars = ollama_context_max_chars or self.settings.ollama_context_max_chars
+        self.llm_provider = self.settings.llm_provider
 
     async def fetch_and_process_papers(
         self,
@@ -69,6 +76,7 @@ class MetadataFetcher:
         build_ollama_context: bool = True,
         store_to_db: bool = True,
         db_session: Optional[Session] = None,
+        index_to_opensearch: bool = False,
     ) -> Dict[str, Any]:
         """
         Fetch papers from arXiv, process PDFs, and store to database.
@@ -90,6 +98,7 @@ class MetadataFetcher:
             "pdfs_downloaded": 0,
             "pdfs_parsed": 0,
             "papers_stored": 0,
+            "papers_indexed": 0,
             "errors": [],
             "processing_time": 0,
         }
@@ -124,6 +133,15 @@ class MetadataFetcher:
             elif store_to_db:
                 logger.warning("Database storage requested but no session provided")
                 results["errors"].append("Database session not provided for storage")
+
+            # Step 4: Index to OpenSearch if requested
+            if index_to_opensearch and self.opensearch_client:
+                logger.info("Step 4: Indexing papers to OpenSearch...")
+                indexed_count = self._index_papers_to_opensearch(papers, pdf_results.get("parsed_papers", {}))
+                results["papers_indexed"] = indexed_count
+            elif index_to_opensearch and not self.opensearch_client:
+                logger.warning("OpenSearch indexing requested but no client provided")
+                results["errors"].append("OpenSearch client not provided for indexing")
 
             # Calculate total processing time
             processing_time = (datetime.now() - start_time).total_seconds()
@@ -319,20 +337,44 @@ class MetadataFetcher:
         )
 
         try:
-            response = await self.ollama_client.generate(self.ollama_model, prompt_text, format="json")
-            raw_response = response.get("response") if isinstance(response, dict) else None
+            if self.llm_provider == "gemini":
+                response = await self.gemini_client.generate(prompt_text, response_mime_type="application/json")
+                raw_response = None
+                if isinstance(response, dict):
+                    candidates = response.get("candidates") or []
+                    if candidates:
+                        content = candidates[0].get("content") or {}
+                        parts = content.get("parts") or []
+                        if parts:
+                            raw_response = parts[0].get("text")
+            else:
+                response = await self.ollama_client.generate(self.ollama_model, prompt_text, format="json")
+                raw_response = response.get("response") if isinstance(response, dict) else None
+
             if not raw_response:
                 return {}
 
             try:
                 import json
 
-                parsed = json.loads(raw_response)
+                cleaned = raw_response.strip()
+                if cleaned.startswith("```"):
+                    cleaned = cleaned.strip("`")
+                    cleaned = cleaned.replace("json", "", 1).strip()
+                try:
+                    parsed = json.loads(cleaned)
+                except Exception:
+                    start = cleaned.find("{")
+                    end = cleaned.rfind("}")
+                    if start != -1 and end != -1 and end > start:
+                        parsed = json.loads(cleaned[start : end + 1])
+                    else:
+                        raise
                 return {
                     "summary": parsed.get("summary"),
                     "key_points": parsed.get("key_points"),
                     "context": parsed.get("context"),
-                    "model": self.ollama_model,
+                    "model": self.settings.gemini_model if self.llm_provider == "gemini" else self.ollama_model,
                     "generated_at": datetime.now(),
                 }
             except Exception:
@@ -340,7 +382,7 @@ class MetadataFetcher:
                     "summary": None,
                     "key_points": None,
                     "context": raw_response,
-                    "model": self.ollama_model,
+                    "model": self.settings.gemini_model if self.llm_provider == "gemini" else self.ollama_model,
                     "generated_at": datetime.now(),
                 }
         except Exception as exc:
@@ -459,11 +501,68 @@ class MetadataFetcher:
 
         return stored_count
 
+    def _index_papers_to_opensearch(
+        self,
+        papers: List[ArxivPaper],
+        parsed_papers: Dict[str, ParsedPaper],
+    ) -> int:
+        """
+        Index papers to OpenSearch for full-text search.
+
+        Args:
+            papers: List of ArxivPaper metadata
+            parsed_papers: Dictionary of parsed PDF content by arxiv_id
+
+        Returns:
+            Number of papers successfully indexed
+        """
+        indexed_count = 0
+
+        for paper in papers:
+            try:
+                # Get parsed content if available
+                parsed_paper = parsed_papers.get(paper.arxiv_id)
+
+                # Prepare data for OpenSearch
+                opensearch_data = {
+                    "arxiv_id": paper.arxiv_id,
+                    "title": paper.title,
+                    "authors": paper.authors if isinstance(paper.authors, str) else ", ".join(paper.authors),
+                    "abstract": paper.abstract,
+                    "categories": paper.categories,
+                    "pdf_url": paper.pdf_url,
+                    "published_date": paper.published_date.isoformat()
+                    if hasattr(paper.published_date, "isoformat")
+                    else str(paper.published_date),
+                }
+
+                # Add parsed content if available
+                if parsed_paper and parsed_paper.pdf_content:
+                    max_text_size = self.settings.opensearch.max_text_size
+                    opensearch_data["raw_text"] = parsed_paper.pdf_content.raw_text[:max_text_size]
+                else:
+                    opensearch_data["raw_text"] = ""
+
+                # Index to OpenSearch
+                if self.opensearch_client.index_paper(opensearch_data):
+                    indexed_count += 1
+                    logger.debug(f"Indexed paper {paper.arxiv_id} to OpenSearch")
+                else:
+                    logger.warning(f"Failed to index paper {paper.arxiv_id} to OpenSearch")
+
+            except Exception as e:
+                logger.error(f"Error indexing paper {paper.arxiv_id} to OpenSearch: {e}")
+
+        logger.info(f"Indexed {indexed_count}/{len(papers)} papers to OpenSearch")
+        return indexed_count
+
 
 def make_metadata_fetcher(
     arxiv_client: ArxivClient,
     pdf_parser: PDFParserService,
+    opensearch_client: Optional[OpenSearchClient] = None,
     pdf_cache_dir: Optional[Path] = None,
+    settings: Optional[Settings] = None,
 ) -> MetadataFetcher:
     """
     Factory function to create MetadataFetcher instance optimized for production.
@@ -481,11 +580,16 @@ def make_metadata_fetcher(
     Returns:
         MetadataFetcher instance optimized for production
     """
+    if settings is None:
+        settings = get_settings()
+
     return MetadataFetcher(
         arxiv_client=arxiv_client,
         pdf_parser=pdf_parser,
+        opensearch_client=opensearch_client,
         pdf_cache_dir=pdf_cache_dir,
-        max_concurrent_downloads=5,
-        max_concurrent_parsing=1,
+        max_concurrent_downloads=settings.arxiv.max_concurrent_downloads,
+        max_concurrent_parsing=settings.arxiv.max_concurrent_parsing,
         ollama_client=None,
+        settings=settings,
     )

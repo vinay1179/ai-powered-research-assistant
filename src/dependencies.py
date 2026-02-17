@@ -5,6 +5,9 @@ from fastapi import Depends, Request
 from sqlalchemy.orm import Session
 from src.config import Settings
 from src.db.interfaces.base import BaseDatabase
+from src.services.arxiv.client import ArxivClient
+from src.services.opensearch.client import OpenSearchClient
+from src.services.pdf_parser.parser import PDFParserService
 
 
 @lru_cache
@@ -29,28 +32,32 @@ def get_db_session(database: Annotated[BaseDatabase, Depends(get_database)]) -> 
         yield session
 
 
-# Week 2: PDF parser service (available via app state)
-def get_pdf_parser_service(request: Request):
-    """Get PDF parser service from app state."""
-    return getattr(request.app.state, "pdf_parser", None)
+def get_opensearch_client(request: Request) -> OpenSearchClient:
+    """Get OpenSearch client from the request state."""
+    return request.app.state.opensearch_client
 
 
-# Week 3+: OpenSearch service (placeholder)
-def get_opensearch_service(request: Request):
-    """Get OpenSearch service from app state (placeholder)."""
-    return getattr(request.app.state, "opensearch_service", None)
+def get_arxiv_client(request: Request) -> ArxivClient:
+    """Get arXiv client from the request state."""
+    return request.app.state.arxiv_client
 
 
-# Phase 3: LLM service (placeholder)
+def get_pdf_parser(request: Request) -> PDFParserService:
+    """Get PDF parser service from the request state."""
+    return request.app.state.pdf_parser
+
+
+# Placeholder for future LLM service wiring (remove if not needed later).
 def get_llm_service(request: Request):
-    """Get LLM service from app state (placeholder)."""
+    """Get LLM service from the request state."""
     return getattr(request.app.state, "llm_service", None)
 
 
-# Dependency type aliases for better type hints
+# Dependency annotations
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 DatabaseDep = Annotated[BaseDatabase, Depends(get_database)]
 SessionDep = Annotated[Session, Depends(get_db_session)]
-PDFParserServiceDep = Annotated[object, Depends(get_pdf_parser_service)]
-OpenSearchServiceDep = Annotated[object, Depends(get_opensearch_service)]
-# LLMServiceDep = Annotated[object, Depends(get_llm_service)]
+OpenSearchDep = Annotated[OpenSearchClient, Depends(get_opensearch_client)]
+ArxivDep = Annotated[ArxivClient, Depends(get_arxiv_client)]
+PDFParserDep = Annotated[PDFParserService, Depends(get_pdf_parser)]
+LLMServiceDep = Annotated[object, Depends(get_llm_service)]
