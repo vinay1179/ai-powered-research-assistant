@@ -32,6 +32,10 @@
   - Langfuse tracing integrated into the RAG pipeline
   - Redis exact-match caching for `/ask` and `/stream`
   - Langfuse + ClickHouse services added for monitoring
+- **Week 7 LangGraph + Guardrails**
+  - Agentic workflow orchestration with LangGraph for multi-step retrieval
+  - Guardrail checks to prevent low-quality or unsafe responses
+  - Agentic ask endpoint: `POST /api/v1/agentic-ask`
 - **Local PDF Testing**
   - Local-only ingestion endpoint for PDF testing
   - Local PDF directory mount for container parsing
@@ -40,10 +44,12 @@
 
 ## ✅ Tests Completed
 
-- Local PDF ingestion (2 PDFs) with parsing + Postgres storage
 - LLM context generation via Gemini (summary/key points/context persisted)
 - Airflow arXiv ingestion (5 PDFs, Gemini enabled; 1 skipped due to >30 pages)
+- Manual arXiv ingestion (5 PDFs, Gemini enabled; 1 skipped due to >45 pages)
+- OpenSearch indexing verified for arXiv papers
 - Hybrid chunk indexing verified in OpenSearch (`arxiv-papers-chunks`)
+- Hybrid chunk indexing via Jina embeddings (rate-limit errors observed, partial success)
 - Hybrid search endpoint validated (`POST /api/v1/hybrid-search`)
 - RAG ask endpoint validated with Gemini (`POST /api/v1/ask`)
 - OpenSearch Dashboards UI verified at `http://localhost:5601`
