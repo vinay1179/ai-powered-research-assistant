@@ -6,7 +6,7 @@ import uvicorn
 from fastapi import FastAPI
 from src.config import get_settings
 from src.db.factory import make_database
-from src.routers import ask, hybrid_search, papers, ping, search, testing
+from src.routers import agentic_ask, ask, hybrid_search, papers, ping, search, testing
 from src.services.arxiv.factory import make_arxiv_client
 from src.services.cache.factory import make_cache_client
 from src.services.embeddings.factory import make_embeddings_service
@@ -103,6 +103,7 @@ app.include_router(ask.router, prefix="/api/v1")
 app.include_router(search.router, prefix="/api/v1")
 app.include_router(hybrid_search.router, prefix="/api/v1")
 app.include_router(testing.router, prefix="/api/v1")
+app.include_router(agentic_ask.router, prefix="/api/v1")
 
 
 if __name__ == "__main__":

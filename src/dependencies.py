@@ -13,6 +13,8 @@ from src.services.langfuse.client import LangfuseTracer
 from src.services.ollama.client import OllamaClient
 from src.services.opensearch.client import OpenSearchClient
 from src.services.pdf_parser.parser import PDFParserService
+from src.services.agents.agentic_rag import AgenticRAGService
+from src.services.agents.factory import make_agentic_rag_service
 
 
 @lru_cache
@@ -96,3 +98,24 @@ OllamaDep = Annotated[OllamaClient, Depends(get_ollama_client)]
 GeminiDep = Annotated[GeminiClient, Depends(get_gemini_client)]
 LangfuseDep = Annotated[LangfuseTracer, Depends(get_langfuse_tracer)]
 CacheDep = Annotated[CacheClient | None, Depends(get_cache_client)]
+
+
+def get_agentic_rag_service(
+    opensearch: OpenSearchDep,
+    embeddings: EmbeddingsDep,
+    ollama: OllamaDep,
+    gemini: GeminiDep,
+    langfuse: LangfuseDep,
+    settings: SettingsDep,
+) -> AgenticRAGService:
+    return make_agentic_rag_service(
+        opensearch_client=opensearch,
+        embeddings_client=embeddings,
+        ollama_client=ollama,
+        gemini_client=gemini,
+        langfuse_tracer=langfuse,
+        settings=settings,
+    )
+
+
+AgenticRAGDep = Annotated[AgenticRAGService, Depends(get_agentic_rag_service)]

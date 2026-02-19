@@ -94,6 +94,30 @@ class LangfuseTracer:
         if not trace or not self.client:
             return None
 
+    def get_trace_id(self, trace=None) -> Optional[str]:
+        """Return trace ID if available."""
+        if trace is None:
+            return None
+        return getattr(trace, "trace_id", None)
+
+    def submit_feedback(
+        self,
+        trace_id: str,
+        score: float,
+        comment: Optional[str] = None,
+        name: str = "user-feedback",
+    ) -> bool:
+        """Submit feedback score to Langfuse."""
+        if not self.client:
+            logger.warning("Cannot submit feedback: Langfuse is disabled")
+            return False
+        try:
+            self.client.score(trace_id=trace_id, name=name, value=score, comment=comment)
+            return True
+        except Exception as exc:
+            logger.error("Error submitting feedback: %s", exc)
+            return False
+
         try:
             return self.client.generation(
                 trace_id=trace.trace_id,

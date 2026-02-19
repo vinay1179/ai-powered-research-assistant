@@ -32,7 +32,7 @@ class ArxivSettings(BaseConfigSettings):
     pdf_cache_dir: str = "./data/arxiv_pdfs"
     rate_limit_delay: float = 3.0
     timeout_seconds: int = 30
-    max_results: int = 15
+    max_results: int = 5
     search_category: str = "cs.AI"
     download_max_retries: int = 3
     download_retry_delay_base: float = 5.0
@@ -61,7 +61,7 @@ class PDFParserSettings(BaseConfigSettings):
         case_sensitive=False,
     )
 
-    max_pages: int = 30
+    max_pages: int = 45
     max_file_size_mb: int = 20
     do_ocr: bool = False
     do_table_structure: bool = True
@@ -140,6 +140,22 @@ class RedisSettings(BaseConfigSettings):
     ttl_hours: int = 6
 
 
+class AgenticRAGSettings(BaseConfigSettings):
+    model_config = SettingsConfigDict(
+        env_file=[".env", str(ENV_FILE_PATH)],
+        env_prefix="AGENTIC_RAG__",
+        extra="ignore",
+        frozen=True,
+        case_sensitive=False,
+    )
+
+    max_retrieval_attempts: int = 2
+    guardrail_threshold: int = 60
+    temperature: float = 0.0
+    top_k: int = 3
+    use_hybrid: bool = True
+
+
 class Settings(BaseConfigSettings):
     app_version: str = "0.1.0"
     debug: bool = True
@@ -172,6 +188,7 @@ class Settings(BaseConfigSettings):
     opensearch: OpenSearchSettings = Field(default_factory=OpenSearchSettings)
     langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
+    agentic_rag: AgenticRAGSettings = Field(default_factory=AgenticRAGSettings)
 
     @field_validator("postgres_database_url")
     @classmethod
