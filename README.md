@@ -17,10 +17,43 @@
   - Index creation + OpenSearch health checks on startup
   - Airflow indexing task
   - **6 PM UTC retry DAG** that reprocesses failed PDFs, rebuilds LLM context, and reindexes
+- **Week 4 Hybrid Search**
+  - Section-based chunking + chunk indexing service
+  - Jina embeddings client integration for vector search
+  - Hybrid OpenSearch index with RRF pipeline
+  - Hybrid search API: `POST /api/v1/hybrid-search`
+  - Airflow hybrid indexing task (chunks + embeddings)
 - **Local PDF Testing + Gemini LLM**
   - Local-only ingestion endpoint for PDF testing
   - Gemini provider integration (keeps Ollama available)
   - Local PDF directory mount for container parsing
+
+---
+
+## ✅ Tests Completed
+
+- Local PDF ingestion (2 PDFs) with parsing + DB storage
+- LLM context generation via Gemini (summary, key points, context persisted)
+- OpenSearch indexing validated (raw_text stored)
+- BM25 scoring verified via OpenSearch `_explain`
+- OpenSearch Dashboards UI verified at `http://localhost:5601`
+
+---
+
+## 🔭 Future Enhancements (LLM Context Building)
+
+- Enforce strict JSON responses from LLMs to avoid markdown fallbacks
+- Add a smaller, dedicated LLM input cap (separate from PDF max chars)
+- Implement chunking + map-reduce summarization for long PDFs
+- Add retries/backoff + partial results when LLM times out
+- Cache LLM outputs to avoid recompute during re-ingestion
+- Allow per-model timeout and context limits via env settings
+- Add a lightweight/faster model option for quick summaries
+- Evaluate storing vector embeddings in Postgres (pgvector) for backup/analytics use
+- Research other embeddings for better performance vs Jina
+- Explore alternatives to Docling for faster PDF parsing
+- Explore alternatives to BM25 and clustering algorithms for better grouping
+# AI-Powered Research Assistant
 
 ---
 
@@ -197,17 +230,6 @@ docker compose up --build -d
 curl http://localhost:8000/health
 ```
 
-### **📚 Weekly Learning Path**
-
-| Week | Topic | Blog Post | Code Release |
-|------|-------|-----------|--------------|
-| **Week 0** | The Mother of AI project - 6 phases | [The Mother of AI project](https://jamwithai.substack.com/p/the-mother-of-ai-project) | - |
-| **Week 1** | Infrastructure Foundation | [The Infrastructure That Powers RAG Systems](https://jamwithai.substack.com/p/the-infrastructure-that-powers-rag) | [week1.0](https://github.com/jamwithai/arxiv-paper-curator/releases/tag/week1.0) |
-| **Week 2** | Data Ingestion Pipeline | [Building Data Ingestion Pipelines for RAG](https://jamwithai.substack.com/p/bringing-your-rag-system-to-life) | [week2.0](https://github.com/jamwithai/arxiv-paper-curator/releases/tag/week2.0) |
-| **Week 3** | **The Search Foundation Every RAG System Needs** | [The Search Foundation Every RAG System Needs](https://jamwithai.substack.com/p/the-search-foundation-every-rag-system) | _Coming Soon_ |
-| **Week 4** | Chunking & Hybrid Retrieval | _Coming Soon_ | _Coming Soon_ |
-| **Week 5** | Full RAG Pipeline | _Coming Soon_ | _Coming Soon_ |
-| **Week 6** | Setting up evals | _Coming Soon_ | _Coming Soon_ |
 
 **📥 Clone a specific week's release:**
 ```bash
@@ -608,17 +630,6 @@ end-to-end pipeline (API, Airflow, DB, OpenSearch, Ollama).
 ### Airflow Pipeline Diagram
 ![Airflow ingestion flow](static/week2_data_ingestion_flow.png)
 
-### Testing Performed
-- Docker services started successfully via `docker compose up -d`
-- Core services healthy: Postgres, OpenSearch, OpenSearch Dashboards, Ollama
-- API health verified at `http://localhost:8000/api/v1/health`
-- Airflow UI accessible at `http://localhost:8080`
-- `arxiv_paper_ingestion` DAG triggered and completed via Airflow UI
-
-### Next Steps
-- Run Week 2 notebook (`notebooks/week2/week2_arxiv_integration.ipynb`)
-- Execute API and DB smoke tests for stored papers
-- Optional: enable OpenSearch indexing (Week 3+)
 
 ### Future Improvements (Context Building)
 - Enforce strict JSON responses from Ollama to avoid markdown fallbacks

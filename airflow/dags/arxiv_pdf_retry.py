@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 
-from arxiv_ingestion.tasks import process_failed_pdfs
+from arxiv_ingestion.retry import process_failed_pdfs
 
 default_args = {
     "owner": "arxiv-curator",
