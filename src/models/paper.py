@@ -23,6 +23,7 @@ class Paper(Base):
     raw_text = Column(Text, nullable=True)
     sections = Column(JSON, nullable=True)
     references = Column(JSON, nullable=True)
+    equations = Column(JSON, nullable=True)
 
     # PDF processing metadata
     parser_used = Column(String, nullable=True)

@@ -13,6 +13,8 @@ class ChunkMetadata(BaseModel):
     overlap_with_previous: int
     overlap_with_next: int
     section_title: Optional[str] = None
+    chunk_type: str = "text"
+    block_order: Optional[int] = None
 
 
 class TextChunk(BaseModel):

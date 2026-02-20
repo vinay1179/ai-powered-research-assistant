@@ -314,6 +314,12 @@ class MetadataFetcher:
                         parsed_paper.llm_context = llm_payload.get("context")
                         parsed_paper.llm_model = llm_payload.get("model")
                         parsed_paper.llm_generated_at = llm_payload.get("generated_at")
+
+                    if pdf_content.equations:
+                        await self._build_equation_explanations(
+                            equations=pdf_content.equations,
+                            sections=pdf_content.sections,
+                        )
                     logger.debug(f"Parse complete: {paper.arxiv_id} - {len(pdf_content.raw_text)} chars extracted")
                 else:
                     # PDF parsing failed, but this is not critical - we can continue with metadata only
@@ -389,6 +395,28 @@ class MetadataFetcher:
             logger.warning("Failed to build LLM context: %s", exc)
             return {}
 
+    async def _build_equation_explanations(self, equations: List[Any], sections: List[Any]) -> None:
+        section_map = {section.title: section.content for section in sections}
+        for equation in equations:
+            context_text = section_map.get(equation.section_title, "")
+            context_snippet = context_text[:1000] if context_text else ""
+            prompt_text = (
+                "You are a research assistant. Explain the following LaTeX equation in plain English.\n"
+                "Use the surrounding section context to interpret symbols and meaning. Keep it concise (1-3 sentences).\n\n"
+                f"Section title: {equation.section_title or 'Unknown'}\n"
+                f"Section context (truncated):\n{context_snippet}\n\n"
+                f"LaTeX equation:\n{equation.latex}\n"
+            )
+            try:
+                response = await self.gemini_client.generate(prompt_text)
+                explanation = ""
+                if isinstance(response, dict):
+                    explanation = GeminiClient._extract_text(response) or ""
+                equation.explanation = explanation.strip() or "Explanation unavailable."
+            except Exception as exc:
+                logger.warning("Failed to build equation explanation: %s", exc)
+                equation.explanation = "Explanation unavailable."
+
     def _serialize_parsed_content(self, parsed_paper: ParsedPaper) -> Dict[str, Any]:
         """
         Serialize ParsedPaper content for database storage.
@@ -408,10 +436,22 @@ class MetadataFetcher:
             # Serialize references
             references = list(pdf_content.references)  #
 
+            # Serialize equations
+            equations = [
+                {
+                    "latex": equation.latex,
+                    "explanation": equation.explanation,
+                    "section_title": equation.section_title,
+                    "block_order": equation.block_order,
+                }
+                for equation in pdf_content.equations
+            ]
+
             return {
                 "raw_text": pdf_content.raw_text,
                 "sections": sections,
                 "references": references,
+                "equations": equations,
                 "parser_used": pdf_content.parser_used.value if pdf_content.parser_used else None,
                 "parser_metadata": pdf_content.metadata or {},
                 "pdf_processed": True,

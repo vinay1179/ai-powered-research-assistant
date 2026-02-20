@@ -34,12 +34,22 @@ class PaperTable(BaseModel):
     id: str = Field(..., description="Table identifier")
 
 
+class PaperEquation(BaseModel):
+    """Represents an equation block in a paper."""
+
+    latex: str = Field(..., description="LaTeX representation of the equation")
+    explanation: str = Field(..., description="Plain-text explanation of the equation")
+    section_title: Optional[str] = Field(default=None, description="Section containing the equation")
+    block_order: int = Field(..., description="Order of the equation within its section")
+
+
 class PdfContent(BaseModel):
     """PDF-specific content extracted by parsers like Docling."""
 
     sections: List[PaperSection] = Field(default_factory=list, description="Paper sections")
     figures: List[PaperFigure] = Field(default_factory=list, description="Figures")
     tables: List[PaperTable] = Field(default_factory=list, description="Tables")
+    equations: List[PaperEquation] = Field(default_factory=list, description="Equation blocks")
     raw_text: str = Field(..., description="Full extracted text")
     references: List[str] = Field(default_factory=list, description="References")
     parser_used: ParserType = Field(..., description="Parser used for extraction")

@@ -68,6 +68,11 @@ def process_failed_pdfs(**context):
                     pdf_url=arxiv_paper.pdf_url,
                 )
                 parsed_paper = ParsedPaper(arxiv_metadata=arxiv_metadata, pdf_content=pdf_content)
+                if pdf_content and pdf_content.equations:
+                    await metadata_fetcher._build_equation_explanations(
+                        equations=pdf_content.equations,
+                        sections=pdf_content.sections,
+                    )
                 parsed_fields = metadata_fetcher._serialize_parsed_content(parsed_paper)
 
                 llm_payload = await metadata_fetcher._build_llm_context(
@@ -100,6 +105,7 @@ def process_failed_pdfs(**context):
                     "published_date": paper.published_date,
                     "raw_text": parsed_fields.get("raw_text", ""),
                     "sections": parsed_fields.get("sections"),
+                    "equations": parsed_fields.get("equations"),
                 }
 
                 index_stats = await indexing_service.index_paper(paper_data)

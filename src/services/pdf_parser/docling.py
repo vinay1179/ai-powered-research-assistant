@@ -1,4 +1,5 @@
 import logging
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -6,8 +7,9 @@ import pypdfium2 as pdfium
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption
+from docling_core.types.doc import FormulaItem
 from src.exceptions import PDFParsingException, PDFValidationError
-from src.schemas.pdf_parser.models import PaperFigure, PaperSection, PaperTable, ParserType, PdfContent
+from src.schemas.pdf_parser.models import PaperEquation, PaperFigure, PaperSection, PaperTable, ParserType, PdfContent
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +31,7 @@ class DoclingParser:
         pipeline_options = PdfPipelineOptions(
             do_table_structure=do_table_structure,
             do_ocr=do_ocr,  # Usually disabled for speed
+            do_formula_enrichment=True,
         )
 
         self._converter = DocumentConverter(format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)})
@@ -94,6 +97,43 @@ class DoclingParser:
             logger.error(f"Error validating PDF {pdf_path}: {e}")
             raise PDFValidationError(f"Error validating PDF {pdf_path}: {e}")
 
+    @staticmethod
+    def _is_equation_element(element: object) -> bool:
+        label = getattr(element, "label", "")
+        if isinstance(label, str) and label:
+            normalized = label.lower()
+            if any(token in normalized for token in ("equation", "formula", "math")):
+                return True
+        return bool(getattr(element, "latex", None) or getattr(element, "math", None))
+
+    @staticmethod
+    def _extract_equation_latex(element: object) -> Optional[str]:
+        for attr in ("latex", "math", "tex"):
+            value = getattr(element, attr, None)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        text = getattr(element, "text", None)
+        if isinstance(text, str) and text.strip():
+            return text.strip()
+        return None
+
+    @staticmethod
+    def _extract_equations_from_text(text: str) -> list[str]:
+        if not text:
+            return []
+        patterns = [
+            r"\$\$(.+?)\$\$",
+            r"\\\[(.+?)\\\]",
+            r"\\\((.+?)\\\)",
+        ]
+        matches: list[str] = []
+        for pattern in patterns:
+            for match in re.findall(pattern, text, flags=re.DOTALL):
+                cleaned = match.strip()
+                if cleaned:
+                    matches.append(cleaned)
+        return matches
+
     async def parse_pdf(self, pdf_path: Path) -> Optional[PdfContent]:
         """
         Parse PDF using Docling as fallback parser.
@@ -122,6 +162,9 @@ class DoclingParser:
             # Extract sections from document structure
             sections = []
             current_section = {"title": "Content", "content": ""}
+            equations: list[PaperEquation] = []
+            seen_equations: set[str] = set()
+            equation_order_by_section: dict[str, int] = {}
 
             for element in doc.texts:
                 if hasattr(element, "label") and element.label in ["title", "section_header"]:
@@ -131,6 +174,26 @@ class DoclingParser:
                     # Start new section
                     current_section = {"title": element.text.strip(), "content": ""}
                 else:
+                    # Extract equations when detected
+                    if self._is_equation_element(element):
+                        latex = self._extract_equation_latex(element)
+                        if latex:
+                            if latex in seen_equations:
+                                continue
+                            seen_equations.add(latex)
+                            section_title = current_section["title"]
+                            block_order = equation_order_by_section.get(section_title, 0) + 1
+                            equation_order_by_section[section_title] = block_order
+                            equations.append(
+                                PaperEquation(
+                                    latex=latex,
+                                    explanation="",
+                                    section_title=section_title,
+                                    block_order=block_order,
+                                )
+                            )
+                        continue
+
                     # Add content to current section
                     if hasattr(element, "text") and element.text:
                         current_section["content"] += element.text + "\n"
@@ -139,11 +202,62 @@ class DoclingParser:
             if current_section["content"].strip():
                 sections.append(PaperSection(title=current_section["title"], content=current_section["content"].strip()))
 
+            # Extract formulas from Docling enrichment outputs
+            section_title = "Content"
+            block_order = equation_order_by_section.get(section_title, 0)
+            for item, _ in doc.iterate_items():
+                if isinstance(item, FormulaItem):
+                    latex = getattr(item, "text", None)
+                    if isinstance(latex, str):
+                        latex = latex.strip()
+                    if not latex:
+                        continue
+                    if latex in seen_equations:
+                        continue
+                    seen_equations.add(latex)
+                    block_order += 1
+                    equations.append(
+                        PaperEquation(
+                            latex=latex,
+                            explanation="",
+                            section_title=section_title,
+                            block_order=block_order,
+                        )
+                    )
+            equation_order_by_section[section_title] = block_order
+
+            # Fallback: extract equations from exported text/markdown
+            if not equations:
+                fallback_text = ""
+                if hasattr(doc, "export_to_markdown"):
+                    try:
+                        fallback_text = doc.export_to_markdown()
+                    except Exception:
+                        fallback_text = ""
+                if not fallback_text:
+                    fallback_text = doc.export_to_text()
+                fallback_equations = self._extract_equations_from_text(fallback_text)
+                if fallback_equations:
+                    section_title = "Content"
+                    block_order = equation_order_by_section.get(section_title, 0)
+                    for equation_text in fallback_equations:
+                        block_order += 1
+                        equations.append(
+                            PaperEquation(
+                                latex=equation_text,
+                                explanation="",
+                                section_title=section_title,
+                                block_order=block_order,
+                            )
+                        )
+                    equation_order_by_section[section_title] = block_order
+
             # Focus on what arXiv API doesn't provide: structured full text content only
             return PdfContent(
                 sections=sections,
                 figures=[],  # Removed: basic metadata not useful
                 tables=[],  # Removed: basic metadata not useful
+                equations=equations,
                 raw_text=doc.export_to_text(),
                 references=[],
                 parser_used=ParserType.DOCLING,

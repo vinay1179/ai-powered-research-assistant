@@ -69,6 +69,9 @@ class PostgreSQLDatabase(BaseDatabase):
             # Create tables if they don't exist (idempotent operation)
             Base.metadata.create_all(bind=self.engine)
 
+            # Ensure newly added JSON columns exist for existing tables
+            self._ensure_json_column("papers", "equations")
+
             # Check if any new tables were created
             updated_tables = inspector.get_table_names()
             new_tables = set(updated_tables) - set(existing_tables)
@@ -87,6 +90,17 @@ class PostgreSQLDatabase(BaseDatabase):
         except Exception as e:
             logger.error(f"Failed to initialize PostgreSQL database: {e}")
             raise
+
+    def _ensure_json_column(self, table_name: str, column_name: str) -> None:
+        """Add a JSON column if it does not exist."""
+        assert self.engine is not None
+        inspector = inspect(self.engine)
+        columns = {col["name"] for col in inspector.get_columns(table_name)}
+        if column_name in columns:
+            return
+        with self.engine.begin() as conn:
+            conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {column_name} JSON"))
+            logger.info("Added missing column %s.%s", table_name, column_name)
 
     def teardown(self) -> None:
         """Close the database connection."""

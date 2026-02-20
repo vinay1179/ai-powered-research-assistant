@@ -35,6 +35,7 @@ class PaperCreate(PaperBase):
     raw_text: Optional[str] = Field(None, description="Full raw text extracted from PDF")
     sections: Optional[List[Dict[str, Any]]] = Field(None, description="List of sections with titles and content")
     references: Optional[List[Dict[str, Any]]] = Field(None, description="List of references if extracted")
+    equations: Optional[List[Dict[str, Any]]] = Field(None, description="List of extracted equations with metadata")
 
     # PDF processing metadata (optional)
     parser_used: Optional[str] = Field(None, description="Which parser was used (DOCLING, GROBID, etc.)")
@@ -59,6 +60,7 @@ class PaperResponse(PaperBase):
     raw_text: Optional[str] = Field(None, description="Full raw text extracted from PDF")
     sections: Optional[List[Dict[str, Any]]] = Field(None, description="List of sections with titles and content")
     references: Optional[List[Dict[str, Any]]] = Field(None, description="List of references if extracted")
+    equations: Optional[List[Dict[str, Any]]] = Field(None, description="List of extracted equations with metadata")
 
     # PDF processing metadata
     parser_used: Optional[str] = Field(None, description="Which parser was used")

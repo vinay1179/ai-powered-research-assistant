@@ -1,6 +1,7 @@
 import logging
 from typing import Dict, List
 
+from src.schemas.indexing.models import ChunkMetadata, TextChunk
 from src.services.embeddings.jina_client import JinaEmbeddingsClient
 from src.services.opensearch.client import OpenSearchClient
 
@@ -39,6 +40,33 @@ class HybridIndexingService:
                 sections=paper_data.get("sections"),
             )
 
+            equation_chunks = []
+            equations = paper_data.get("equations") or []
+            if equations:
+                for equation in equations:
+                    explanation = (equation.get("explanation") or "").strip() or "Explanation unavailable."
+                    equation_chunks.append(
+                        TextChunk(
+                            text=explanation,
+                            metadata=ChunkMetadata(
+                                chunk_index=len(chunks) + len(equation_chunks),
+                                start_char=0,
+                                end_char=len(explanation),
+                                word_count=len(explanation.split()),
+                                overlap_with_previous=0,
+                                overlap_with_next=0,
+                                section_title=equation.get("section_title"),
+                                chunk_type="equation",
+                                block_order=equation.get("block_order"),
+                            ),
+                            arxiv_id=arxiv_id,
+                            paper_id=paper_id,
+                        )
+                    )
+
+            if equation_chunks:
+                chunks = chunks + equation_chunks
+
             if not chunks:
                 logger.warning("No chunks created for paper %s", arxiv_id)
                 return {"chunks_created": 0, "chunks_indexed": 0, "embeddings_generated": 0, "errors": 0}
@@ -69,6 +97,10 @@ class HybridIndexingService:
                     "start_char": chunk.metadata.start_char,
                     "end_char": chunk.metadata.end_char,
                     "section_title": chunk.metadata.section_title,
+                    "chunk_type": chunk.metadata.chunk_type,
+                    "block_order": chunk.metadata.block_order,
+                    "equation_latex": None,
+                    "equation_explanation": None,
                     "embedding_model": "jina-embeddings-v3",
                     "title": paper_data.get("title", ""),
                     "authors": ", ".join(paper_data.get("authors", []))
@@ -78,6 +110,20 @@ class HybridIndexingService:
                     "categories": paper_data.get("categories", []),
                     "published_date": paper_data.get("published_date"),
                 }
+
+                if chunk.metadata.chunk_type == "equation":
+                    eq = next(
+                        (
+                            item
+                            for item in equations
+                            if item.get("block_order") == chunk.metadata.block_order
+                            and item.get("section_title") == chunk.metadata.section_title
+                        ),
+                        None,
+                    )
+                    if eq:
+                        chunk_data["equation_latex"] = eq.get("latex")
+                        chunk_data["equation_explanation"] = eq.get("explanation")
 
                 chunks_with_embeddings.append({"chunk_data": chunk_data, "embedding": embedding})
 
